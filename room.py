@@ -1,4 +1,3 @@
-
 from venv import logger
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
@@ -33,7 +32,7 @@ DATABASE = {
 JWT_SECRET = os.environ.get("JWT_SECRET")
 if not JWT_SECRET:
     JWT_SECRET = secrets.token_hex(32)  # Generate a secret if none exists.
-    print("Generated new JWT_SECRET:", JWT_SECRET)  #print so you can set it as an env variable.
+    print("Generated new JWT_SECRET:", JWT_SECRET)  # print so you can set it as an env variable.
 
 app.config['SECRET_KEY'] = JWT_SECRET
 
@@ -59,14 +58,14 @@ def generate_otp():
 @app.route('/ms-login')
 def ms_login():
     auth_url = f'https://login.microsoftonline.com/{MS_TENANT_ID}/oauth2/v2.0/authorize?' + \
-               urllib.parse.urlencode({
-                   'client_id': MS_CLIENT_ID,
-                   'response_type': 'code',
-                   'redirect_uri': MS_REDIRECT_URI,
-                   'response_mode': 'query',
-                   'scope': 'openid profile Mail.Send',
-                   'state': '12345'  # Random string for CSRF protection
-               })
+              urllib.parse.urlencode({
+                  'client_id': MS_CLIENT_ID,
+                  'response_type': 'code',
+                  'redirect_uri': MS_REDIRECT_URI,
+                  'response_mode': 'query',
+                  'scope': 'openid profile Mail.Send',
+                  'state': '12345'  # Random string for CSRF protection
+              })
     return redirect(auth_url)
 
 @app.route('/callback')
@@ -97,12 +96,27 @@ def callback():
                 # Process any pending emails
                 if pending_emails:
                     for email_details in pending_emails:
-                        send_email_graph(email_details['to_email'], email_details['subject'], email_details['body'])
+                        if email_details.get('is_html', False):
+                            # Send HTML email
+                            send_email_graph_html(
+                                email_details['to_email'],
+                                email_details['subject'],
+                                email_details['html_body'],
+                                email_details.get('plain_body')
+                            )
+                        else:
+                            # Send plain text email
+                            send_email_graph_html(
+                                email_details['to_email'],
+                                email_details['subject'],
+                                email_details['body']
+                            )
                     pending_emails.clear()
-                
+                    print(f"Processed {len(pending_emails)} pending emails after authentication")
+
                 # Redirect to frontend success page
                 return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-success')
-            
+
             # Redirect to frontend with error
             return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-error')
 
@@ -118,28 +132,30 @@ def callback():
 def auth_error():
     return jsonify({'error': 'Authentication failed or was canceled'}), 400
 
-# Function to send email using Microsoft Graph API
-def send_email_graph(to_email, subject, body_content):
+def send_email_graph_html(to_email, subject, html_body, plain_body=None):
+    """Function to send HTML email using Microsoft Graph API."""
     global access_token, pending_emails
-    
+
     # If no access token, store email details for later and prompt authentication
     if not access_token:
         pending_emails.append({
             'to_email': to_email,
             'subject': subject,
-            'body': body_content
+            'html_body': html_body,
+            'plain_body': plain_body,
+            'is_html': True
         })
         print(f"No access token available. Email queued for later sending to {to_email}")
         return {'status': 'queued', 'message': 'Authentication required'}
-    
+
     url = 'https://graph.microsoft.com/v1.0/me/sendMail'
-    
+
     email_data = {
         'message': {
             'subject': subject,
             'body': {
-                'contentType': 'Text',
-                'content': body_content,
+                'contentType': 'HTML',
+                'content': html_body,
             },
             'toRecipients': [
                 {
@@ -150,16 +166,16 @@ def send_email_graph(to_email, subject, body_content):
             ],
         },
     }
-    
+
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json',
     }
-    
+
     try:
         response = requests.post(url, json=email_data, headers=headers)
         response.raise_for_status()
-        print(f'Email sent successfully to {to_email}!')
+        print(f'HTML email sent successfully to {to_email}!')
         return {'status': 'sent', 'message': 'Email sent successfully'}
     except requests.exceptions.HTTPError as error:
         # If unauthorized, clear token so we know to reauthenticate
@@ -168,7 +184,9 @@ def send_email_graph(to_email, subject, body_content):
             pending_emails.append({
                 'to_email': to_email,
                 'subject': subject,
-                'body': body_content
+                'html_body': html_body,
+                'plain_body': plain_body,
+                'is_html': True
             })
             print(f"Unauthorized. Token expired. Email queued for later sending to {to_email}")
             return {'status': 'queued', 'message': 'Authentication required, token expired'}
@@ -177,7 +195,6 @@ def send_email_graph(to_email, subject, body_content):
     except requests.exceptions.RequestException as error:
         print(f"Error sending email: {error}")
         return {'status': 'error', 'message': str(error)}
-    
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -200,7 +217,7 @@ def register():
         cur = conn.cursor()
         cur.execute("SELECT * FROM employees_register WHERE employee_id = %s", (employee_id,))
         if cur.fetchone():
-            return jsonify({'error': 'Employee ID already registered'}), 400
+         return jsonify({'error': 'Employee ID already registered'}), 400
 
         # Insert new user
         cur.execute("INSERT INTO employees_register (full_name, employee_id, email, phone_number, department, designation, password) VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -276,7 +293,7 @@ def forgot_password():
     # Send OTP via Microsoft Graph API
     subject = "Password Reset OTP"
     body = f"Your OTP is: {otp}"
-    result = send_email_graph(email, subject, body)
+    result = send_email_graph_html(email, subject, body)
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -325,7 +342,7 @@ def reset_password():
         cur.close()
         conn.close()
         return jsonify({'error': 'Invalid OTP or OTP expired'}), 400
-   
+    
 def format_time(time_obj):
     """Converts datetime.time object to 12-hour format."""
     hours = time_obj.hour
@@ -362,7 +379,108 @@ def send_booking_email(email, full_name, room, date, time_from, time_to, booked_
     """Function to send booking confirmation email using Microsoft Graph API."""
     subject = f"{room} Booking Confirmation"
 
-    body = f"""
+    # Create HTML email body with styling
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Room Booking Confirmation</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            .email-container {{
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background-color: #4a86e8;
+                color: white;
+                padding: 20px;
+                text-align: center;
+            }}
+            .content {{
+                padding: 20px;
+                background-color: #ffffff;
+            }}
+            .booking-details {{
+                background-color: #f5f5f5;
+                border-radius: 6px;
+                padding: 15px 20px;
+                margin: 15px 0;
+            }}
+            .booking-item {{
+                margin: 10px 0;
+            }}
+            .booking-label {{
+                font-weight: bold;
+                color: #555555;
+            }}
+            .footer {{
+                text-align: center;
+                padding: 15px;
+                font-size: 14px
+                color: #777777;
+                background-color: #f9f9f9;
+                border-top: 1px solid #e0e0e0;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <h2>Room Booking Confirmation</h2>
+            </div>
+            <div class="content">
+                <p>Hello,</p>
+                <p>Your room booking has been confirmed.</p>
+                
+                <div class="booking-details">
+                    <div class="booking-item">
+                        <span class="booking-label">Booked by:</span> {full_name}
+                    </div>
+                    <div class="booking-item">
+                        <span class="booking-label">Room:</span> {room}
+                    </div>
+                    <div class="booking-item">
+                        <span class="booking-label">Date:</span> {date}
+                    </div>
+                    <div class="booking-item">
+                        <span class="booking-label">Time:</span> {time_from} to {time_to}
+                    </div>
+    """
+
+    if booked_by:
+        html_body += f"""
+                    <div class="booking-item">
+                        <span class="booking-label">Booked for:</span> {email}
+                    </div>
+        """
+
+    html_body += """
+                </div>
+                
+                <p>Thank you.</p>
+            </div>
+            <div class="footer">
+                <p>This is an automated message. Please do not reply to this email.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    # Create a plain text version as fallback
+    plain_body = f"""
     Hello,
 
     Your room booking has been confirmed.
@@ -375,11 +493,12 @@ def send_booking_email(email, full_name, room, date, time_from, time_to, booked_
     """
 
     if booked_by:
-        body += f"\n- Booked for: {booked_by}"
+        plain_body += f"\n- Booked for: {email}"
 
-    body += "\n\nThank you."
+    plain_body += "\n\nThank you."
 
-    return send_email_graph(email, subject, body)
+    # Update the send_email_graph function to handle HTML emails
+    return send_email_graph_html(email, subject, html_body, plain_body)
 
 @app.route('/book_room', methods=['POST'])
 @token_required
@@ -417,7 +536,7 @@ def book_room():
             return jsonify({"error": "Booking is on a weekend. Please confirm."}), 400
 
     except ValueError:
-         jsonify({'error': 'Invalid time format'}), 400
+        return jsonify({'error': 'Invalid time format'}), 400
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -466,6 +585,12 @@ def book_room():
 
     cur.close()
     conn.close()
+
+    # check if email is queued
+    global pending_emails
+
+    if pending_emails:
+        return jsonify({'message': 'Room booked successfully!', 'emailQueued': True}), 200
 
     return jsonify({'message': 'Room booked successfully!'}), 200
 
@@ -535,7 +660,7 @@ def auth_status():
             'pendingEmails': len(pending_emails)
         }), 200
 
-# Route to refresh the access token using a refresh token
+## Route to refresh the access token using a refresh token
 @app.route('/refresh-token', methods=['POST'])
 def refresh_token():
     refresh_token = request.json.get('refresh_token')
