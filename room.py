@@ -28,9 +28,15 @@ CORS(app, supports_credentials=True)
 #     'port': '5432'
 # }
 
+DATABASE = {
+    'dbname': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT')
+}
 
-SQLALCHEMY_DATABASE_URI = "postgresql://avnadmin:AVNS_LxntLC6YcMGA7CYaR5o@pg-2ac3c26a-hrms-b7f6.h.aivencloud.com:19580/room_booking"
-
+# SQLALCHEMY_DATABASE_URI = os.getenv("SQLALCHEMY_DATABASE_URI")
 
 # Secret key for JWT
 JWT_SECRET = os.environ.get("JWT_SECRET")
