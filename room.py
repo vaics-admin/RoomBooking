@@ -20,13 +20,17 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 # Database connection details
-DATABASE = {
-    'dbname': 'backend',
-    'user': 'postgres',
-    'password': '12345',
-    'host': 'localhost',
-    'port': '5432'
-}
+# DATABASE = {
+#     'dbname': 'backend',
+#     'user': 'postgres',
+#     'password': '12345',
+#     'host': 'localhost',
+#     'port': '5432'
+# }
+
+
+SQLALCHEMY_DATABASE_URI = "postgresql://avnadmin:AVNS_LxntLC6YcMGA7CYaR5o@pg-2ac3c26a-hrms-b7f6.h.aivencloud.com:19580/room_booking"
+
 
 # Secret key for JWT
 JWT_SECRET = os.environ.get("JWT_SECRET")
