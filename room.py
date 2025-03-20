@@ -1,3 +1,5 @@
+
+###Room.py file
 from venv import logger
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
@@ -125,18 +127,18 @@ def callback():
                     print(f"Processed {len(pending_emails)} pending emails after authentication")
 
                 # Redirect to frontend success page
-                return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-success')
+                return redirect(os.environ.get('FRONTEND_URL', 'https://roombookingfrontend.onrender.com') + '/auth-success')
 
             # Redirect to frontend with error
-            return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-error')
+            return redirect(os.environ.get('FRONTEND_URL', 'https://roombookingfrontend.onrender.com') + '/auth-error')
 
         except requests.exceptions.RequestException as error:
             print(f"Error getting tokens: {error}")
             # Redirect to frontend with error
-            return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-error')
+            return redirect(os.environ.get('FRONTEND_URL', 'https://roombookingfrontend.onrender.com') + '/auth-error')
     else:
         # Redirect to frontend with error
-        return redirect(os.environ.get('FRONTEND_URL', 'http://localhost:3000') + '/auth-error')
+        return redirect(os.environ.get('FRONTEND_URL', 'https://roombookingfrontend.onrender.com') + '/auth-error')
 
 @app.route('/auth-error')
 def auth_error():
@@ -199,7 +201,7 @@ def send_email_graph_html(to_email, subject, html_body, plain_body=None):
                 'is_html': True
             })
             print(f"Unauthorized. Token expired. Email queued for later sending to {to_email}")
-            return {'status': 'queued', 'message': 'Authentication required, token expired'}
+            return {'status': 'queued', 'message': 'Authentication required, token expired', 'requiresRefresh': True}
         print(f"Error sending email: {error}")
         return {'status': 'error', 'message': str(error)}
     except requests.exceptions.RequestException as error:
